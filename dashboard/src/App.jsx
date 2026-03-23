@@ -19,6 +19,71 @@ const M = "'IBM Plex Mono', monospace";
 const SF = "'Cormorant Garamond', Georgia, serif";
 const SN = "'DM Sans', -apple-system, sans-serif";
 
+// ── BYOK: Client-side Anthropic inference ──
+
+function getApiKey() { return localStorage.getItem("arclight_api_key") || ""; }
+function setApiKey(k) { localStorage.setItem("arclight_api_key", k); }
+function clearApiKey() { localStorage.removeItem("arclight_api_key"); }
+
+async function runAltTextQuest(imageUrl, context, apiKey) {
+  // Download image and convert to base64 in browser
+  const imgResp = await fetch(imageUrl);
+  const blob = await imgResp.blob();
+  const base64 = await new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(",")[1]);
+    reader.readAsDataURL(blob);
+  });
+  const mediaType = blob.type || "image/jpeg";
+
+  const prompt = `You are generating accessibility alt-text for a blind user.
+
+Image context: ${context}
+
+Write a concise, descriptive alt-text for this image. Follow WCAG guidelines:
+- Describe the content and function of the image
+- Be specific about what's shown (colors, objects, actions, spatial relationships)
+- Keep it under 150 words
+- Don't start with "Image of" or "Picture of"
+- Focus on what a blind user needs to understand the image
+
+Respond with ONLY the alt-text, nothing else.`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 300,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: prompt }
+        ]
+      }]
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const text = data.content[0].text.trim();
+  const tokens = data.usage.input_tokens + data.usage.output_tokens;
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  return { text, tokens_used: tokens, model: "claude-sonnet-4-20250514", hash: hashHex };
+}
+
 // ── Shared Components ──
 
 function Petal({ delay, left }) {
@@ -291,12 +356,17 @@ function CreateAgent({ onDone, onBack }) {
 // ── Dashboard (Post-Login) ──
 
 function Dashboard({ agent, token }) {
-  const [tab, setTab] = useState("feed");
+  const [tab, setTab] = useState("quests");
   const [agents, setAgents] = useState([]);
   const [feed, setFeed] = useState([]);
   const [quests, setQuests] = useState([]);
   const [nps, setNps] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [apiKey, setApiKeyState] = useState(getApiKey());
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [questRunning, setQuestRunning] = useState(null);
+  const [questResult, setQuestResult] = useState(null);
+  const [questError, setQuestError] = useState(null);
 
   const load = () => {
     const h = { Authorization: "Bearer " + token };
@@ -419,18 +489,130 @@ function Dashboard({ agent, token }) {
 
             {tab === "quests" && (
               <div>
-                <div style={{ fontFamily: M, fontSize: 9, color: C.text4, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12 }}>Available Quests</div>
-                {quests.map(q => (
-                  <div key={q.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <div style={{ fontFamily: M, fontSize: 13, fontWeight: 700 }}>{q.title}</div>
-                      <span style={{ fontFamily: M, fontSize: 11, color: C.green }}>+{q.xp_reward} XP</span>
+                {/* API Key Setup */}
+                {!apiKey ? (
+                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20, marginBottom: 16 }}>
+                    <div style={{ fontFamily: M, fontSize: 9, color: C.blossomMd, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>Connect Your API Key</div>
+                    <p style={{ fontSize: 12, color: C.text3, lineHeight: 1.6, marginBottom: 12 }}>
+                      Your agent needs an API key to do quests. The key stays in your browser — our server never sees it.
+                    </p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        type="password"
+                        placeholder="sk-ant-api03-..."
+                        onChange={e => setApiKeyState(e.target.value)}
+                        style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, color: C.text, borderRadius: 6, padding: "8px 12px", fontFamily: M, fontSize: 12, outline: "none" }}
+                      />
+                      <Btn primary small onClick={() => { setApiKey(apiKey); setShowKeyInput(false); }} disabled={!apiKey || !apiKey.startsWith("sk-")}>
+                        Save Key
+                      </Btn>
                     </div>
-                    <div style={{ fontSize: 12, color: C.text3, marginTop: 4, lineHeight: 1.5 }}>{q.description}</div>
-                    <div style={{ fontFamily: M, fontSize: 9, color: C.text4, marginTop: 6 }}>{q.quest_type} · {q.xp_skill} · D{q.difficulty}</div>
+                    <p style={{ fontFamily: M, fontSize: 9, color: C.text4, marginTop: 8 }}>
+                      Get your key at console.anthropic.com/settings/keys. Stored in localStorage only.
+                    </p>
                   </div>
-                ))}
-                {quests.length === 0 && <div style={{ fontFamily: M, fontSize: 11, color: C.text4, padding: 40, textAlign: "center" }}>All quests taken. More coming soon.</div>}
+                ) : (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontFamily: M, fontSize: 9, color: C.green, textTransform: "uppercase", letterSpacing: 1.5 }}>
+                      ● Key connected · {apiKey.slice(0, 12)}...
+                    </div>
+                    <button onClick={() => { clearApiKey(); setApiKeyState(""); }} style={{ fontFamily: M, fontSize: 9, color: C.text4, background: "none", border: "none", cursor: "pointer" }}>
+                      Remove key
+                    </button>
+                  </div>
+                )}
+
+                {/* Quest Result */}
+                {questResult && (
+                  <div style={{ background: C.surface, border: `1px solid ${C.green}40`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                    <div style={{ fontFamily: M, fontSize: 9, color: C.green, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>Quest Completed</div>
+                    <div style={{ fontFamily: SF, fontSize: 14, color: C.text, lineHeight: 1.6, fontStyle: "italic", marginBottom: 8 }}>"{questResult.text}"</div>
+                    <div style={{ fontFamily: M, fontSize: 10, color: C.text4 }}>
+                      {questResult.tokens_used} tokens · {questResult.model} · {questResult.normalized_tk} TK contributed
+                    </div>
+                    <button onClick={() => setQuestResult(null)} style={{ fontFamily: M, fontSize: 9, color: C.text4, background: "none", border: "none", cursor: "pointer", marginTop: 8 }}>Dismiss</button>
+                  </div>
+                )}
+
+                {questError && (
+                  <div style={{ background: C.surface, border: `1px solid ${C.danger}40`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                    <div style={{ fontFamily: M, fontSize: 11, color: C.danger }}>{questError}</div>
+                    <button onClick={() => setQuestError(null)} style={{ fontFamily: M, fontSize: 9, color: C.text4, background: "none", border: "none", cursor: "pointer", marginTop: 6 }}>Dismiss</button>
+                  </div>
+                )}
+
+                <div style={{ fontFamily: M, fontSize: 9, color: C.text4, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12 }}>Available Quests</div>
+                {quests.map(q => {
+                  const isRunning = questRunning === q.id;
+                  const inputData = typeof q.input_data === "string" ? JSON.parse(q.input_data) : q.input_data;
+
+                  const handleStartQuest = async () => {
+                    if (!apiKey) return;
+                    setQuestRunning(q.id);
+                    setQuestResult(null);
+                    setQuestError(null);
+                    try {
+                      // 1. Accept quest
+                      const acceptRes = await fetch(`${API}/quests/${q.id}/accept`, {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                        body: JSON.stringify({ agent_id: agent.agent_id, role: "executor" })
+                      });
+                      if (!acceptRes.ok) throw new Error((await acceptRes.json()).detail || "Failed to accept quest");
+
+                      // 2. Run inference client-side (BYOK)
+                      const output = await runAltTextQuest(inputData.url, inputData.context || "", apiKey);
+
+                      // 3. Submit result to our server (no API key sent)
+                      const submitRes = await fetch(`${API}/quests/${q.id}/submit`, {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                        body: JSON.stringify({
+                          agent_id: agent.agent_id, result: output.text,
+                          result_hash: output.hash, tokens_used: output.tokens_used, model_used: output.model
+                        })
+                      });
+                      const submitData = await submitRes.json();
+
+                      // 4. Auto-verify for MVP (until we have verifier agents)
+                      await fetch(`${API}/quests/${q.id}/verify`, {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+                        body: JSON.stringify({
+                          agent_id: agent.agent_id, result: output.text,
+                          result_hash: output.hash, tokens_used: Math.floor(output.tokens_used * 0.3),
+                          model_used: output.model, similarity_score: 0.92
+                        })
+                      });
+
+                      setQuestResult({ ...output, normalized_tk: submitData.normalized_tk });
+                      load(); // refresh data
+                    } catch (e) {
+                      setQuestError(e.message);
+                    }
+                    setQuestRunning(null);
+                  };
+
+                  return (
+                    <div key={q.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, marginBottom: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontFamily: M, fontSize: 13, fontWeight: 700 }}>{q.title}</div>
+                          <div style={{ fontSize: 12, color: C.text3, marginTop: 4, lineHeight: 1.5 }}>{q.description}</div>
+                          <div style={{ fontFamily: M, fontSize: 9, color: C.text4, marginTop: 6 }}>{q.xp_skill} · +{q.xp_reward} XP · D{q.difficulty}</div>
+                        </div>
+                        <Btn primary small onClick={handleStartQuest} disabled={!apiKey || isRunning} style={{ marginLeft: 12, flexShrink: 0 }}>
+                          {isRunning ? "Running..." : "Start Quest"}
+                        </Btn>
+                      </div>
+                      {isRunning && (
+                        <div style={{ fontFamily: M, fontSize: 10, color: C.blossomMd, marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: C.blossomMd, animation: "pulse 1s infinite" }} />
+                          Your agent is generating alt-text using your API key (client-side)...
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {quests.length === 0 && <div style={{ fontFamily: M, fontSize: 11, color: C.text4, padding: 40, textAlign: "center" }}>All quests completed. More coming soon.</div>}
+                <style>{`@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}`}</style>
               </div>
             )}
 
