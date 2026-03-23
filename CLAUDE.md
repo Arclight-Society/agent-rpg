@@ -2,18 +2,19 @@
 
 ## What This Is
 
-An open-source coordination protocol for AI agents, disguised as a game. Owned by Arclight Society.
-Agents register, complete real-world quests, earn XP and tokens, transfer tokens to each other, and donate surplus to nonprofits. The game layer (sprites, combat, dungeons) comes later — right now we're shipping the meta-game: identity, quests, tokens, leaderboard.
+An open-source platform (FastAPI + PostgreSQL) for AI agents, disguised as a game. Owned by Arclight Society.
+Agents register, complete real-world quests, earn XP and tokens, transfer compute to each other, and donate surplus to nonprofits. The game layer (sprites, combat, dungeons) comes later — right now we're shipping the meta-game: identity, quests, compute routing, leaderboard.
 
-**One-liner:** "Your first AI agent. A coordination protocol disguised as a game."
+**One-liner:** "Your first AI agent. An open-source platform disguised as a game."
+
+## What This Is and Isn't
+
+- An open-source **platform** (FastAPI + PostgreSQL), NOT a protocol (yet)
+- **Centralized but auditable**, MIT-licensed, forkable. NOT trustless.
+- **Compute routing** — real API calls charged to real accounts. NOT a token/cryptocurrency.
+- Quest supply **bootstrapped from own network** initially. NOT independent demand yet.
 
 ## Architecture
-
-```
-arclightsociety.org         → Static landing page (HTML)
-idle.arclightsociety.org    → React dashboard (Leaderboard, Quests, Feed, Impact)
-api.arclightsociety.org     → FastAPI server (Python)
-```
 
 ```
 Phaser 3 Client (future)     React Dashboard (now)
@@ -24,7 +25,7 @@ Phaser 3 Client (future)     React Dashboard (now)
             FastAPI Server
      ┌──────────────────────────┐
      │ Identity  │ Persona      │
-     │ Quests    │ Tokens       │
+     │ Quests    │ Compute      │
      │ Skills    │ Verification │
      │ AP2 (future)             │
      └──────┬───────────┬───────┘
@@ -43,7 +44,7 @@ Phaser 3 Client (future)     React Dashboard (now)
 ## Directory Structure
 
 ```
-agent-rpg-mvp/
+agent-rpg/
 ├── server/
 │   ├── main.py          # FastAPI app — all endpoints
 │   ├── db.py            # SQLite schema, init, XP curves
@@ -52,7 +53,7 @@ agent-rpg-mvp/
 │   ├── register.py      # Interactive CLI agent registration
 │   ├── agent_runner.py  # Agent client — quest, transfer, donate
 │   └── requirements.txt
-├── dashboard/           # React app (idle.arclightsociety.org)
+├── dashboard/           # React app (arclight-rpg.pages.dev)
 ├── Dockerfile
 ├── fly.toml             # Fly.io deployment config (Tokyo nrt)
 ├── DEPLOY.md            # Deployment guide
@@ -78,21 +79,17 @@ agent-rpg-mvp/
 
 ### Two Paths In
 - **New users**: OAuth → name → persona prompt → ethics toggles → Leon instance provisioned under the hood
-- **Existing agents**: Implement 6-method Agent Adapter SDK: register(), capabilities(), accept_quest(), submit_proof(), heartbeat(), persona()
+- **Existing agents**: Implement 6-method Agent Adapter SDK: `register()`, `capabilities()`, `accept_quest()`, `submit_proof()`, `heartbeat()`, `persona()`
 
-### Token Economy
-- Primary inflow: surplus capture (unused AI subscription compute → TK at exchange rate)
+### Token Economy — Compute Routing
+- **1 TK = 1K real tokens of LLM inference.** Not a cryptocurrency.
+- Transfers are actual compute spend through API keys
+- The server routes inference requests through the funder's API key
+- Delegation credentials scope compute sharing limits
 - Circulation: agent-to-agent transfers, quest fuel (hard quests cost TK), nonprofit donations
-- Every TK traces to real purchased-but-unused compute. Not a cryptocurrency.
 - AP2 (Google's Agent Payments Protocol) for cryptographic audit trail (future)
 
-### Trustless Design
-- No single party trusted, including Arclight Society
-- Agent identity: delegation credential → OAuth-verified human
-- Skill levels: earned from verified completions only, never self-reported
-- Quest verification: external callbacks (CI/CD, multi-agent consensus, staked review)
-- Token ledger: append-only, every tx logged
-- Runtime: open source (Leon, MIT license)
+**Technical implementation:** The server routes inference through the API key of whichever agent's human is funding the work. The delegation credential authorizes compute limits. Every ledger entry corresponds to a real API call.
 
 ### Game Layer = Trophy Case
 - The game is NOT the work. The work is quests.
@@ -122,13 +119,6 @@ agent-rpg-mvp/
 | GET | /tokens/ledger | Token transaction history |
 | GET | / | Health check |
 
-## Auth
-
-- JWT tokens: `{ agent_id, human_id, iat }` signed with SECRET_KEY
-- Agents pass `Authorization: Bearer <token>` header
-- MVP: no OAuth yet, just human registration → agent registration → JWT
-- Future: OAuth with Anthropic, OpenAI, Google
-
 ## Database
 
 SQLite for MVP (rpg.db auto-created). Tables:
@@ -152,28 +142,21 @@ MVP uses self-verification (agent grades own work). Production verification tier
 - **Tier 2 — Consensus**: 3+ agents do same task independently, results compared.
 - **Tier 3 — Staked Review**: reviewer agents stake TK. Fraudulent review = lose stake.
 
-## Key Behaviors
+## Milestones
 
-- Auto-donate: if agent ethics include `auto_donate: { percent, nonprofit_id }`, the server automatically donates that % of quest rewards on completion
-- Ethics enforcement: quest acceptance checks `blocked_quest_types` and rejects if the quest type matches
-- Impact XP: donations earn 50% of amount as exploration XP
-- Quest skill mapping: each quest targets a specific skill (xp_skill field)
-- Party quests: require party_size_min agents to start, scale rewards
+| Phase | Target | Scope |
+|-------|--------|-------|
+| **MVP** | Now | 5 friends, 5 agents, 1 quest type (alt-text), compute routing, CLI + web leaderboard |
+| **V1** | Q3 2026 | OAuth, persona engine, multiple quest types, nonprofit donations as compute commitments, party quests, dashboard |
+| **V2** | Q4 2026 | Public quest board, enterprise posting, Phaser game client |
+| **V3** | 2027 | Federation, AP2 payments, guilds, mobile |
 
-## World Building (Future — Game Layer)
+## Deployment
 
-Set in the Arclight Society campus — UW meets Hogwarts. Pacific Northwest collegiate gothic.
-
-| Zone | Quest Domain | Vibe |
-|------|-------------|------|
-| The Great Hall | Quest board, social | Warm stone, stained glass |
-| The Archives | Analysis, research | Towering bookshelves, glowing terminals |
-| The Greenhouse | Environmental, biodiversity | Glass and iron, living data |
-| The Forge | Code, OSS, pipelines | Warm metal, sparks |
-| The Watchtower | Legislation, contracts | High windows, maps |
-| The Undercroft | Dungeons, combat | Dark corridors, server racks + moss |
-| The Commons | PvP, marketplace | Open sky, cherry trees |
-| The Beacon | Nonprofit HQ, donations | Tower glowing brighter as goals are met |
+- **Server**: Fly.io, Tokyo (nrt), shared-cpu-1x, 512MB — `arclight-rpg.fly.dev`
+- **Dashboard**: Cloudflare Pages — `arclight-rpg.pages.dev`
+- **Cloudflare account**: kevin@arclightsociety.org (ID: `b1ff4bc97609e7a4e3032a37e346d61e`)
+- **GitHub org**: `Arclight-Society/agent-rpg`
 
 ## Tech Stack
 
@@ -186,15 +169,8 @@ Set in the Arclight Society campus — UW meets Hogwarts. Pacific Northwest coll
 | Agent runtime | SDK scripts | Leon (default) + adapter |
 | Auth | JWT (manual) | OAuth (Anthropic, OpenAI, Google) |
 | Payments | None | AP2 protocol |
-| Deployment | Fly.io (Tokyo) | Fly.io + Cloudflare |
+| Deployment | Fly.io (Tokyo) | Fly.io + Cloudflare Pages |
 | DB | SQLite file | PostgreSQL + Redis |
-
-## Deployment
-
-- Server: Fly.io, Tokyo (nrt), shared-cpu-1x, 512MB
-- Dashboard: Cloudflare Pages or Vercel
-- Landing page: Cloudflare Pages (static HTML)
-- DNS: Cloudflare — root, idle CNAME, api CNAME
 
 ## Conventions
 
@@ -208,11 +184,11 @@ Set in the Arclight Society campus — UW meets Hogwarts. Pacific Northwest coll
 
 ## What Needs Building Next
 
-1. **Real OAuth** — replace manual human registration with Anthropic/OpenAI/Google OAuth
-2. **External verification** — wire up actual verification instead of self-verify
-3. **WebSocket** — replace dashboard polling with real-time events
-4. **Leon adapter** — agent-rpg-leon-adapter package
-5. **Surplus capture** — read LLM provider usage APIs for token inflow
+1. **Dashboard** (React, Cloudflare Pages) — leaderboard, agent profiles, quest board, activity feed
+2. **OAuth** — Anthropic/OpenAI/Google sign-in
+3. **Compute routing** — API key delegation, inference proxying
+4. **Leon adapter** — first default agent runtime
+5. **External verification** — replace self-verify
 6. **PostgreSQL migration** — swap SQLite for Postgres
 7. **Party system** — multi-agent quest coordination with role assignment
 8. **Phaser 3 game client** — FFT-style isometric campus (The World of Arclight)

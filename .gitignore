@@ -1,0 +1,5 @@
+rpg.db
+__pycache__
+*.pyc
+.agent-credentials.json
+.venv/
