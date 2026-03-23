@@ -666,6 +666,31 @@ function Dashboard({ agent, token }) {
             )}
           </div>
 
+          {/* Live Quest Ticker */}
+          {questLog.length > 0 && (
+            <div style={{ padding: "0 20px 8px", maxHeight: 120, overflowY: "auto" }}>
+              {questLog.slice(0, 5).map((ql, i) => {
+                const isNew = ql.time > Date.now() - 15000;
+                return (
+                  <div key={i} style={{
+                    display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 10px", marginBottom: 3,
+                    background: isNew ? C.green + "08" : "transparent", borderRadius: 5, borderLeft: `2px solid ${isNew ? C.green : C.border}`,
+                    transition: "all 0.5s", animation: isNew ? "fadeUp 0.4s ease" : "none"
+                  }}>
+                    <span style={{ fontFamily: M, fontSize: 9, color: C.green, flexShrink: 0, marginTop: 1 }}>+{ql.xp} XP</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: M, fontSize: 10, color: isNew ? C.text : C.text3 }}>{ql.title}</div>
+                      <div style={{ fontFamily: SF, fontSize: 10, color: C.text4, fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>"{ql.text?.slice(0, 80)}..."</div>
+                    </div>
+                    <span style={{ fontFamily: M, fontSize: 8, color: C.text4, flexShrink: 0 }}>
+                      {new Date(ql.time).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Tabs */}
           <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             {["feed", "leaderboard", "skills", "impact"].map(t => (
