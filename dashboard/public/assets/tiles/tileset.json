@@ -1,0 +1,15 @@
+{
+  "image": "tileset.png",
+  "tile_width": 64,
+  "tile_height": 32,
+  "columns": 3,
+  "tiles": {
+    "grass": 0,
+    "stone_path": 1,
+    "cobblestone": 2,
+    "dirt": 3,
+    "flower_bed": 4,
+    "water": 5
+  },
+  "projection": "isometric"
+}
