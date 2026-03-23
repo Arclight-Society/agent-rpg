@@ -460,7 +460,7 @@ function Campus({ myAgent, agents, questLog, autoQuest }) {
 
 // ── Dashboard (Post-Login) ──
 
-function Dashboard({ agent, token }) {
+function Dashboard({ agent, token, onLogout }) {
   const [tab, setTab] = useState("skills");
   const [agents, setAgents] = useState([]);
   const [feed, setFeed] = useState([]);
@@ -474,7 +474,8 @@ function Dashboard({ agent, token }) {
   const [questError, setQuestError] = useState(null);
 
   // Auto-quest engine state
-  const [autoQuest, setAutoQuest] = useState(false);
+  const [autoQuest, setAutoQuestState] = useState(() => localStorage.getItem("arclight_auto_quest") === "true");
+  const setAutoQuest = (v) => { setAutoQuestState(v); localStorage.setItem("arclight_auto_quest", v.toString()); };
   const [dailyLimit, setDailyLimit] = useState(10);
   const [dailyCount, setDailyCount] = useState(() => {
     const saved = localStorage.getItem("arclight_daily_count");
@@ -787,6 +788,9 @@ function Dashboard({ agent, token }) {
                     <button onClick={() => { clearApiKey(); setApiKeyState(""); }} style={{ fontFamily: M, fontSize: 9, color: C.text4, background: "none", border: "none", cursor: "pointer" }}>
                       Remove key
                     </button>
+                    {onLogout && <button onClick={() => { clearApiKey(); setApiKeyState(""); onLogout(); }} style={{ fontFamily: M, fontSize: 9, color: C.danger || "#C93545", background: "none", border: "none", cursor: "pointer", marginLeft: 12 }}>
+                      Log out
+                    </button>}
                   </div>
                 )}
 
@@ -934,17 +938,38 @@ function Dashboard({ agent, token }) {
 // ── Main App ──
 
 export default function App() {
-  const [view, setView] = useState("landing"); // landing, create, dashboard
-  const [agent, setAgent] = useState(null);
-  const [token, setToken] = useState(null);
+  const [view, setView] = useState(() => {
+    const saved = localStorage.getItem("arclight_session");
+    return saved ? "dashboard" : "landing";
+  });
+  const [agent, setAgent] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("arclight_session")); } catch { return null; }
+  });
+  const [token, setToken] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem("arclight_session")); return s?.token || null; } catch { return null; }
+  });
+
+  const handleLogin = (a) => {
+    setAgent(a);
+    setToken(a.token);
+    setView("dashboard");
+    localStorage.setItem("arclight_session", JSON.stringify(a));
+  };
+
+  const handleLogout = () => {
+    setAgent(null);
+    setToken(null);
+    setView("landing");
+    localStorage.removeItem("arclight_session");
+  };
 
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <style>{`*{margin:0;padding:0;box-sizing:border-box;}body{background:#0A0B24;}::selection{background:#C47A9050;color:#fff;}input:focus,textarea:focus{border-color:#C47A90 !important;}scrollbar-width:thin;scrollbar-color:#1E2050 transparent;::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-thumb{background:#1E2050;border-radius:5px;}`}</style>
       {view === "landing" && <Landing onEnter={() => setView("create")} />}
-      {view === "create" && <CreateAgent onDone={(a) => { setAgent(a); setToken(a.token); setView("dashboard"); }} onBack={() => setView("landing")} />}
-      {view === "dashboard" && agent && <Dashboard agent={agent} token={token} />}
+      {view === "create" && <CreateAgent onDone={handleLogin} onBack={() => setView("landing")} />}
+      {view === "dashboard" && agent && <Dashboard agent={agent} token={token} onLogout={handleLogout} />}
     </>
   );
 }

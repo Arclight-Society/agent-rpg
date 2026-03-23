@@ -1,0 +1,20 @@
+{
+  "image": "icon_atlas.png",
+  "icon_size": 32,
+  "columns": 7,
+  "icons": {
+    "skill_combat": 0,
+    "skill_analysis": 1,
+    "skill_fortification": 2,
+    "skill_coordination": 3,
+    "skill_commerce": 4,
+    "skill_crafting": 5,
+    "skill_exploration": 6,
+    "token_tk": 7,
+    "xp_star": 8,
+    "beacon_icon": 9,
+    "quest_icon": 10,
+    "party_icon": 11,
+    "auto_quest": 12
+  }
+}

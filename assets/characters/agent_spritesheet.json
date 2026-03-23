@@ -1,0 +1,38 @@
+{
+  "image": "agent_spritesheet.png",
+  "frame_width": 32,
+  "frame_height": 32,
+  "columns": 4,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true
+    },
+    "walk_south": {
+      "row": 1,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "walk_east": {
+      "row": 2,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "walk_north": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    },
+    "walk_west": {
+      "row": 4,
+      "frames": 4,
+      "fps": 8,
+      "loop": true
+    }
+  }
+}

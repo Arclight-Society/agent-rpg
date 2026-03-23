@@ -1,0 +1,22 @@
+{
+  "base": "agent_spritesheet.png",
+  "variants": {
+    "red": "agent_spritesheet_red.png",
+    "purple": "agent_spritesheet_purple.png",
+    "blue": "agent_spritesheet_blue.png",
+    "green": "agent_spritesheet_green.png",
+    "amber": "agent_spritesheet_amber.png",
+    "orange": "agent_spritesheet_orange.png",
+    "cyan": "agent_spritesheet_cyan.png"
+  },
+  "tint_strength": 0.35,
+  "skill_color_map": {
+    "combat": "red",
+    "analysis": "purple",
+    "fortification": "blue",
+    "coordination": "green",
+    "commerce": "amber",
+    "crafting": "orange",
+    "exploration": "cyan"
+  }
+}
