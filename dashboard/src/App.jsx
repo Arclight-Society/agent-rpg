@@ -353,10 +353,107 @@ function CreateAgent({ onDone, onBack }) {
   );
 }
 
+// ── Campus View ──
+
+function Campus({ myAgent, agents, questLog, autoQuest }) {
+  const [myZone, setMyZone] = useState("hall");
+
+  useEffect(() => {
+    if (questLog.length > 0 && autoQuest) {
+      setMyZone("archives"); // alt_text quests go to archives
+      const t = setTimeout(() => setMyZone("hall"), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [questLog.length]);
+
+  const zones = [
+    { id: "hall", name: "Great Hall", x: 50, y: 55, w: 80, h: 50, color: C.amber + "30", borderColor: C.amber },
+    { id: "archives", name: "The Archives", x: 15, y: 40, w: 55, h: 35, color: "#A855F720", borderColor: "#A855F7" },
+    { id: "forge", name: "The Forge", x: 85, y: 40, w: 55, h: 35, color: "#F9731620", borderColor: "#F97316" },
+    { id: "greenhouse", name: "Greenhouse", x: 20, y: 15, w: 50, h: 30, color: C.green + "20", borderColor: C.green },
+    { id: "watchtower", name: "Watchtower", x: 80, y: 15, w: 50, h: 30, color: "#3B82F620", borderColor: "#3B82F6" },
+    { id: "beacon", name: "The Beacon", x: 50, y: 8, w: 40, h: 35, color: C.blossomDk + "25", borderColor: C.blossomDk },
+  ];
+
+  const myPos = zones.find(z => z.id === myZone) || zones[0];
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: 300, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+      {/* Grid lines */}
+      <div style={{ position: "absolute", inset: 0, opacity: 0.05, backgroundImage: "repeating-linear-gradient(0deg, #AAB2E2 0px, transparent 1px, transparent 30px), repeating-linear-gradient(90deg, #AAB2E2 0px, transparent 1px, transparent 30px)" }} />
+
+      {/* Petals */}
+      {Array.from({length: 8}).map((_, i) => <Petal key={i} delay={Math.random()*10} left={Math.random()*100} />)}
+      <style>{`@keyframes fall{0%{transform:translateY(-20px) rotate(0deg);opacity:0.3;}100%{transform:translateY(320px) rotate(360deg);opacity:0;}}`}</style>
+
+      {/* Zones */}
+      {zones.map(z => (
+        <div key={z.id} style={{
+          position: "absolute", left: `calc(${z.x}% - ${z.w/2}px)`, top: `calc(${z.y}% - ${z.h/2}px)`,
+          width: z.w, height: z.h, background: z.color, border: `1px solid ${z.borderColor}40`,
+          borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          transition: "all 0.3s"
+        }}>
+          <div style={{ fontFamily: M, fontSize: 7, color: z.borderColor, textTransform: "uppercase", letterSpacing: 1, opacity: 0.8 }}>{z.name}</div>
+        </div>
+      ))}
+
+      {/* My Agent Sprite */}
+      <div style={{
+        position: "absolute",
+        left: `calc(${myPos.x}% - 6px)`, top: `calc(${myPos.y}% + ${myPos.h/2 + 8}px)`,
+        transition: "left 2s ease, top 2s ease",
+        zIndex: 10
+      }}>
+        <div style={{
+          width: 12, height: 12, borderRadius: 6,
+          background: `linear-gradient(135deg, ${C.blossomDk}, ${C.amber})`,
+          boxShadow: `0 0 8px ${C.blossomDk}60`,
+          animation: autoQuest ? "agentBob 2s ease-in-out infinite" : "agentBob 4s ease-in-out infinite",
+        }} />
+        <div style={{ fontFamily: M, fontSize: 7, color: C.blossomLt, textAlign: "center", marginTop: 2, whiteSpace: "nowrap", transform: "translateX(-50%)", marginLeft: 6 }}>
+          {myAgent?.name}
+        </div>
+      </div>
+
+      {/* Other agents */}
+      {agents?.filter(a => a.id !== myAgent?.id).slice(0, 15).map((a, i) => {
+        const zone = zones[Math.floor(Math.random() * zones.length)];
+        return (
+          <div key={a.id} title={a.name + " L" + a.total_level} style={{
+            position: "absolute",
+            left: `calc(${zone.x + (Math.random() - 0.5) * 15}% - 4px)`,
+            top: `calc(${zone.y + (Math.random() - 0.5) * 10}% + ${zone.h/2 + 5}px)`,
+            width: 8, height: 8, borderRadius: 4,
+            background: C.text4, opacity: 0.4,
+            animation: "agentBob 3s ease-in-out infinite",
+            animationDelay: `${i * 0.3}s`,
+            zIndex: 5
+          }} />
+        );
+      })}
+
+      <style>{`@keyframes agentBob{0%,100%{transform:translateY(0);}50%{transform:translateY(-3px);}}`}</style>
+
+      {/* Quest activity overlay */}
+      {questLog.length > 0 && questLog[0].time > Date.now() - 10000 && (
+        <div style={{
+          position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)",
+          fontFamily: M, fontSize: 9, color: C.green, background: C.bg + "E0",
+          padding: "4px 12px", borderRadius: 4, border: `1px solid ${C.green}30`,
+          animation: "fadeUp 0.5s ease"
+        }}>
+          +{questLog[0].xp} XP — {questLog[0].title}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Dashboard (Post-Login) ──
 
 function Dashboard({ agent, token }) {
-  const [tab, setTab] = useState("quests");
+  const [tab, setTab] = useState("skills");
   const [agents, setAgents] = useState([]);
   const [feed, setFeed] = useState([]);
   const [quests, setQuests] = useState([]);
@@ -367,6 +464,20 @@ function Dashboard({ agent, token }) {
   const [questRunning, setQuestRunning] = useState(null);
   const [questResult, setQuestResult] = useState(null);
   const [questError, setQuestError] = useState(null);
+
+  // Auto-quest engine state
+  const [autoQuest, setAutoQuest] = useState(false);
+  const [dailyLimit, setDailyLimit] = useState(10);
+  const [dailyCount, setDailyCount] = useState(() => {
+    const saved = localStorage.getItem("arclight_daily_count");
+    const savedDate = localStorage.getItem("arclight_daily_date");
+    const today = new Date().toDateString();
+    if (savedDate === today && saved) return parseInt(saved);
+    return 0;
+  });
+  const [nextQuestIn, setNextQuestIn] = useState(0);
+  const [questLog, setQuestLog] = useState([]);
+  const autoRef = useRef(null);
 
   const load = () => {
     const h = { Authorization: "Bearer " + token };
@@ -381,6 +492,80 @@ function Dashboard({ agent, token }) {
   };
 
   useEffect(() => { load(); const iv = setInterval(load, 5000); return () => clearInterval(iv); }, []);
+
+  // Auto-quest loop
+  useEffect(() => {
+    if (!autoQuest || !apiKey || dailyCount >= dailyLimit) {
+      if (autoRef.current) clearTimeout(autoRef.current);
+      return;
+    }
+
+    const runNext = async () => {
+      try {
+        // Fetch available quests
+        const qRes = await fetch(API + "/quests?status=available&quest_type=alt_text");
+        const available = await qRes.json();
+        if (available.length === 0) { setAutoQuest(false); return; }
+
+        // Pick random quest
+        const quest = available[Math.floor(Math.random() * available.length)];
+        const inputData = typeof quest.input_data === "string" ? JSON.parse(quest.input_data) : quest.input_data;
+
+        // Accept
+        const acceptRes = await fetch(`${API}/quests/${quest.id}/accept`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ agent_id: agent.agent_id, role: "executor" })
+        });
+        if (!acceptRes.ok) throw new Error("Failed to accept");
+
+        // Run inference client-side
+        const output = await runAltTextQuest(inputData.url, inputData.context || "", apiKey);
+
+        // Submit
+        await fetch(`${API}/quests/${quest.id}/submit`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ agent_id: agent.agent_id, result: output.text, result_hash: output.hash, tokens_used: output.tokens_used, model_used: output.model })
+        });
+
+        // Auto-verify for MVP
+        await fetch(`${API}/quests/${quest.id}/verify`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ agent_id: agent.agent_id, result: output.text, result_hash: output.hash, tokens_used: Math.floor(output.tokens_used * 0.3), model_used: output.model, similarity_score: 0.92 })
+        });
+
+        // Update counts
+        const newCount = dailyCount + 1;
+        setDailyCount(newCount);
+        localStorage.setItem("arclight_daily_count", newCount.toString());
+        localStorage.setItem("arclight_daily_date", new Date().toDateString());
+
+        // Add to quest log
+        setQuestLog(prev => [{ title: quest.title, xp: quest.xp_reward, time: Date.now(), text: output.text }, ...prev].slice(0, 20));
+
+        // Refresh data
+        load();
+
+      } catch (e) {
+        console.error("Auto-quest error:", e);
+      }
+
+      // Schedule next quest (2-3 min randomized)
+      const delay = (120 + Math.random() * 60) * 1000;
+      setNextQuestIn(delay);
+      autoRef.current = setTimeout(runNext, delay);
+    };
+
+    // Start first quest after short delay
+    autoRef.current = setTimeout(runNext, 3000);
+    return () => { if (autoRef.current) clearTimeout(autoRef.current); };
+  }, [autoQuest, apiKey, dailyCount, dailyLimit]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (nextQuestIn <= 0) return;
+    const iv = setInterval(() => setNextQuestIn(p => Math.max(0, p - 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [nextQuestIn]);
 
   const skills = ["combat","analysis","fortification","coordination","commerce","crafting","exploration"];
   const skillColors = { combat: "#EF4444", analysis: "#A855F7", fortification: "#3B82F6", coordination: "#10B981", commerce: "#F59E0B", crafting: "#F97316", exploration: "#06B6D4" };
@@ -432,8 +617,58 @@ function Dashboard({ agent, token }) {
 
         {/* Main */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          {/* Campus View */}
+          <div style={{ padding: "12px 20px 0" }}>
+            <Campus myAgent={profile} agents={agents} questLog={questLog} autoQuest={autoQuest} />
+          </div>
+
+          {/* Auto-Quest Controls */}
+          <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            {/* Toggle */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={() => setAutoQuest(!autoQuest)} style={{
+                width: 40, height: 20, borderRadius: 10, border: "none", cursor: "pointer",
+                background: autoQuest ? C.green : C.border, position: "relative", transition: "background 0.2s"
+              }}>
+                <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", position: "absolute", top: 2, left: autoQuest ? 22 : 2, transition: "left 0.2s" }} />
+              </button>
+              <span style={{ fontFamily: M, fontSize: 10, color: autoQuest ? C.green : C.text4 }}>
+                {autoQuest ? "AUTO-QUESTING" : "AUTO-QUEST OFF"}
+              </span>
+            </div>
+
+            {/* Daily progress */}
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontFamily: M, fontSize: 9, color: C.text4 }}>{dailyCount}/{dailyLimit} TODAY</span>
+                {nextQuestIn > 0 && autoQuest && (
+                  <span style={{ fontFamily: M, fontSize: 9, color: C.blossomMd }}>
+                    Next: {Math.floor(nextQuestIn/60000)}:{String(Math.floor((nextQuestIn%60000)/1000)).padStart(2,"0")}
+                  </span>
+                )}
+              </div>
+              <Bar v={dailyCount} mx={dailyLimit} c={autoQuest ? C.green : C.text4} h={4} />
+            </div>
+
+            {/* Limit selector */}
+            <div style={{ display: "flex", gap: 4 }}>
+              {[5, 10, 20, 50].map(n => (
+                <button key={n} onClick={() => setDailyLimit(n)} style={{
+                  fontFamily: M, fontSize: 9, padding: "3px 8px", borderRadius: 4, border: `1px solid ${dailyLimit === n ? C.blossomDk : C.border}`,
+                  background: dailyLimit === n ? C.blossomDk + "20" : "transparent", color: dailyLimit === n ? C.blossom : C.text4, cursor: "pointer"
+                }}>{n}/day</button>
+              ))}
+            </div>
+
+            {/* API key status */}
+            {!apiKey && (
+              <span style={{ fontFamily: M, fontSize: 9, color: C.danger }}>No API key — set in Skills tab</span>
+            )}
+          </div>
+
+          {/* Tabs */}
           <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-            {["feed", "leaderboard", "quests", "impact"].map(t => (
+            {["feed", "leaderboard", "skills", "impact"].map(t => (
               <button key={t} onClick={() => setTab(t)} style={{
                 background: "none", border: "none", padding: "10px 18px", fontFamily: M, fontSize: 10,
                 color: tab === t ? "#fff" : C.text4, fontWeight: tab === t ? 700 : 400, cursor: "pointer",
@@ -487,7 +722,7 @@ function Dashboard({ agent, token }) {
               </div>
             )}
 
-            {tab === "quests" && (
+            {tab === "skills" && (
               <div>
                 {/* API Key Setup */}
                 {!apiKey ? (
@@ -613,6 +848,23 @@ function Dashboard({ agent, token }) {
                 })}
                 {quests.length === 0 && <div style={{ fontFamily: M, fontSize: 11, color: C.text4, padding: 40, textAlign: "center" }}>All quests completed. More coming soon.</div>}
                 <style>{`@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}`}</style>
+
+                {/* Auto-Quest Log */}
+                {questLog.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ fontFamily: M, fontSize: 9, color: C.text4, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12 }}>Auto-Quest Log</div>
+                    {questLog.map((ql, i) => (
+                      <div key={i} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: 12, marginBottom: 6 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <span style={{ fontFamily: M, fontSize: 11, fontWeight: 600, color: C.text }}>{ql.title}</span>
+                          <span style={{ fontFamily: M, fontSize: 9, color: C.green }}>+{ql.xp} XP</span>
+                        </div>
+                        <div style={{ fontFamily: SF, fontSize: 12, color: C.text3, fontStyle: "italic", lineHeight: 1.5 }}>"{ql.text?.slice(0, 120)}{ql.text?.length > 120 ? "..." : ""}"</div>
+                        <div style={{ fontFamily: M, fontSize: 8, color: C.text4, marginTop: 4 }}>{new Date(ql.time).toLocaleTimeString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

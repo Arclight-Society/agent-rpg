@@ -153,6 +153,17 @@ def init_db():
                 json.dumps(img), 1, 40, "commerce", "available", now
             ))
 
+    # Add new columns if missing (migration for existing DBs)
+    try:
+        c.execute("ALTER TABLE agents ADD COLUMN upgrades TEXT DEFAULT '{}'")
+    except: pass
+    try:
+        c.execute("ALTER TABLE agents ADD COLUMN daily_quest_limit INT DEFAULT 10")
+    except: pass
+    try:
+        c.execute("ALTER TABLE agents ADD COLUMN xp_spent INT DEFAULT 0")
+    except: pass
+
     c.commit()
     c.close()
 
@@ -241,6 +252,10 @@ class QuestAccept(BaseModel):
     agent_id: str
     role: str = "executor"
 
+class UpgradeRequest(BaseModel):
+    upgrade_type: str  # quest_efficiency, daily_limit, auto_verify, quest_unlock
+    cost_xp: int = 0  # client can send, but server calculates actual cost
+
 
 # ── App ─────────────────────────────────────
 
@@ -292,6 +307,7 @@ def list_agents():
         for s in ["combat","analysis","fortification","coordination","commerce","crafting","exploration"]:
             d[f"level_{s}"] = level_of(d[f"xp_{s}"])
         d["total_level"] = sum(d[f"level_{s}"] for s in ["combat","analysis","fortification","coordination","commerce","crafting","exploration"])
+        d["upgrades"] = json.loads(d["upgrades"]) if isinstance(d.get("upgrades"), str) else d.get("upgrades", {})
         result.append(d)
     return result
 
@@ -306,6 +322,7 @@ def get_agent(aid: str):
         d[f"level_{s}"] = level_of(d[f"xp_{s}"])
     d["total_level"] = sum(d[f"level_{s}"] for s in ["combat","analysis","fortification","coordination","commerce","crafting","exploration"])
     d["ethics"] = json.loads(d["ethics"]) if isinstance(d["ethics"], str) else d["ethics"]
+    d["upgrades"] = json.loads(d["upgrades"]) if isinstance(d.get("upgrades"), str) else d.get("upgrades", {})
     return d
 
 
@@ -487,6 +504,113 @@ def donate_compute(req: ComputeDonate, auth=Depends(verify_token)):
     return {"success": True, "amount_tk": req.amount_tk, "impact_xp": impact_xp}
 
 
+# ═══ IDLE GAME — SESSION SUMMARY & UPGRADES ═══
+
+UPGRADE_COSTS = {
+    "daily_limit": 50,       # +10 daily quest limit per level
+    "quest_efficiency": 100,  # XP per level
+    "auto_verify": 150,       # XP per level
+    "quest_unlock": 200,      # XP per level
+}
+
+@app.get("/agents/{aid}/session-summary")
+def session_summary(aid: str, since: float = 0):
+    """Returns activity summary for an agent since a given timestamp."""
+    c = db()
+    a = c.execute("SELECT * FROM agents WHERE id=?", (aid,)).fetchone()
+    if not a: c.close(); raise HTTPException(404, "Agent not found")
+
+    # Quests completed since timestamp
+    completed = c.execute(
+        "SELECT COUNT(*) FROM assignments WHERE agent_id=? AND status IN ('verified','completed') AND completed_at>?",
+        (aid, since)
+    ).fetchone()[0]
+
+    # XP earned: sum from events
+    xp_events = c.execute(
+        "SELECT * FROM events WHERE agent_id=? AND event_type IN ('quest_complete','verify','donate') AND created_at>? ORDER BY created_at ASC",
+        (aid, since)
+    ).fetchall()
+
+    # TK contributed from ledger
+    tk_rows = c.execute(
+        "SELECT SUM(normalized_tk) FROM compute_ledger WHERE from_agent=? AND created_at>?",
+        (aid, since)
+    ).fetchone()
+    tk_contributed = tk_rows[0] or 0
+
+    # Donations
+    donation_rows = c.execute(
+        "SELECT SUM(normalized_tk) FROM compute_ledger WHERE from_agent=? AND tx_type='donation' AND created_at>?",
+        (aid, since)
+    ).fetchone()
+    tk_donated = donation_rows[0] or 0
+
+    # Level-ups: check events for level mentions
+    level_ups = []
+    for ev in xp_events:
+        msg = ev["message"] or ""
+        if "leveled to" in msg:
+            level_ups.append(msg)
+
+    c.close()
+    return {
+        "agent_id": aid,
+        "since": since,
+        "quests_completed": completed,
+        "tk_contributed": round(tk_contributed, 3),
+        "tk_donated": round(tk_donated, 3),
+        "level_ups": level_ups,
+        "events": [dict(e) for e in xp_events],
+    }
+
+
+@app.post("/agents/{aid}/upgrade")
+def upgrade_agent(aid: str, req: UpgradeRequest, auth=Depends(verify_token)):
+    """Purchase an upgrade using XP. Upgrades are leveled; each level costs more."""
+    if req.upgrade_type not in UPGRADE_COSTS:
+        raise HTTPException(400, f"Unknown upgrade type. Valid: {list(UPGRADE_COSTS.keys())}")
+
+    c = db()
+    a = c.execute("SELECT * FROM agents WHERE id=?", (aid,)).fetchone()
+    if not a: c.close(); raise HTTPException(404, "Agent not found")
+
+    upgrades = json.loads(a["upgrades"]) if isinstance(a["upgrades"], str) else (a["upgrades"] or {})
+    current_level = upgrades.get(req.upgrade_type, 0)
+    next_level = current_level + 1
+    cost = UPGRADE_COSTS[req.upgrade_type] * next_level
+
+    available_xp = a["total_xp"] - a["xp_spent"]
+    if available_xp < cost:
+        c.close()
+        raise HTTPException(400, f"Not enough XP. Need {cost}, have {available_xp} available ({a['total_xp']} total - {a['xp_spent']} spent)")
+
+    # Apply upgrade
+    upgrades[req.upgrade_type] = next_level
+    new_xp_spent = a["xp_spent"] + cost
+
+    # Special effect: daily_limit increases by 10 per level
+    new_daily_limit = 10 + (upgrades.get("daily_limit", 0) * 10)
+
+    now = time.time()
+    c.execute("UPDATE agents SET upgrades=?, xp_spent=?, daily_quest_limit=?, last_active=? WHERE id=?",
+              (json.dumps(upgrades), new_xp_spent, new_daily_limit, now, aid))
+    log_event(c, aid, "upgrade", f"{a['name']} upgraded {req.upgrade_type} to level {next_level} (cost: {cost} XP)")
+    c.commit()
+    c.close()
+
+    return {
+        "agent_id": aid,
+        "upgrade_type": req.upgrade_type,
+        "new_level": next_level,
+        "cost_xp": cost,
+        "xp_spent_total": new_xp_spent,
+        "available_xp": a["total_xp"] - new_xp_spent,
+        "upgrades": upgrades,
+        "daily_quest_limit": new_daily_limit,
+    }
+
+
 # ═══ LEADERBOARD & FEED ═══
 
 @app.get("/leaderboard")
@@ -502,6 +626,7 @@ def leaderboard(sort: str = "total_xp", limit: int = 20):
         for s in ["combat","analysis","fortification","coordination","commerce","crafting","exploration"]:
             d[f"level_{s}"] = level_of(d[f"xp_{s}"])
         d["total_level"] = sum(d[f"level_{s}"] for s in ["combat","analysis","fortification","coordination","commerce","crafting","exploration"])
+        d["upgrades"] = json.loads(d["upgrades"]) if isinstance(d.get("upgrades"), str) else d.get("upgrades", {})
         result.append(d)
     return result
 
