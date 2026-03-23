@@ -2,9 +2,11 @@
 Quest system with compute routing. API keys never touch this server.
 First quest type: accessibility alt-text.
 """
-import os, json, time, uuid, hashlib
+import os, json, time, uuid, hashlib, logging, re
 from typing import Optional
 from contextlib import asynccontextmanager
+from urllib.request import urlopen, Request
+from urllib.error import URLError
 
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -217,6 +219,122 @@ def log_event(c, agent_id, etype, msg):
               (agent_id, etype, msg, time.time()))
 
 
+# ── Quest Auto-Generation ──────────────────
+
+logger = logging.getLogger("arclight")
+
+
+def fetch_wikimedia_images(count: int = 10) -> list[dict]:
+    """Fetch random images from Wikimedia Commons that need alt-text descriptions."""
+    url = (
+        f"https://commons.wikimedia.org/w/api.php?action=query&generator=random"
+        f"&grnnamespace=6&grnlimit={count}&prop=imageinfo"
+        f"&iiprop=url|mime|extmetadata&iiurlwidth=640&format=json"
+    )
+    try:
+        req = Request(url, headers={"User-Agent": "ArclightSociety/0.2 (quest-generator)"})
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except (URLError, OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Wikimedia API request failed: {e}")
+        return []
+
+    pages = data.get("query", {}).get("pages", {})
+    results = []
+    for page in pages.values():
+        info_list = page.get("imageinfo", [])
+        if not info_list:
+            continue
+        info = info_list[0]
+        mime = info.get("mime", "")
+
+        # Skip non-images, SVGs, and tiny images
+        if not mime.startswith("image/"):
+            continue
+        if "svg" in mime.lower():
+            continue
+        thumb_url = info.get("thumburl", info.get("url", ""))
+        thumb_w = info.get("thumbwidth", 0)
+        thumb_h = info.get("thumbheight", 0)
+        if thumb_w < 100 or thumb_h < 100:
+            continue
+
+        # Extract description from extmetadata
+        extmeta = info.get("extmetadata", {})
+        description = ""
+        if "ImageDescription" in extmeta:
+            description = extmeta["ImageDescription"].get("value", "")
+        categories = ""
+        if "Categories" in extmeta:
+            categories = extmeta["Categories"].get("value", "")
+
+        title = page.get("title", "Unknown").replace("File:", "")
+        context = description or categories or "Wikimedia Commons image"
+        # Strip HTML tags from context
+        context = re.sub(r"<[^>]+>", " ", context).strip()
+        if len(context) > 200:
+            context = context[:200] + "..."
+
+        results.append({
+            "url": thumb_url,
+            "title": title,
+            "source": "wikimedia",
+            "context": context,
+        })
+
+    return results
+
+
+def generate_quests(count: int = 5) -> int:
+    """Generate new quests from Wikimedia images. Returns number of quests created."""
+    images = fetch_wikimedia_images(count=max(count, 10))
+    if not images:
+        return 0
+
+    c = db()
+    created = 0
+    now = time.time()
+
+    for img in images:
+        if created >= count:
+            break
+
+        # Skip if quest with this URL already exists
+        existing = c.execute(
+            "SELECT id FROM quests WHERE input_data LIKE ?",
+            (f'%{img["url"]}%',)
+        ).fetchone()
+        if existing:
+            continue
+
+        qid = f"q-alt-{uuid.uuid4().hex[:8]}"
+        title_short = img["title"]
+        if len(title_short) > 60:
+            title_short = title_short[:57] + "..."
+
+        c.execute("INSERT INTO quests VALUES (?,?,?,?,?,?,?,?,?,?)", (
+            qid, "alt_text",
+            f"Generate Alt-Text: {title_short}",
+            f"Write an accessibility description for this image. Source: {img['context']}",
+            json.dumps(img), 1, 40, "commerce", "available", now
+        ))
+        created += 1
+
+    c.commit()
+    c.close()
+    return created
+
+
+def ensure_quest_supply(min_available: int = 5, generate_count: int = 10) -> int:
+    """Check available quest count and generate more if below threshold."""
+    c = db()
+    available = c.execute("SELECT COUNT(*) FROM quests WHERE status='available'").fetchone()[0]
+    c.close()
+    if available < min_available:
+        return generate_quests(count=generate_count)
+    return 0
+
+
 # ── Models ──────────────────────────────────
 
 class HumanReg(BaseModel):
@@ -262,6 +380,13 @@ class UpgradeRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Ensure quest board is stocked on startup
+    try:
+        generated = ensure_quest_supply(min_available=5, generate_count=10)
+        if generated:
+            logger.info(f"Startup: generated {generated} new quests")
+    except Exception as e:
+        logger.warning(f"Startup quest generation failed (non-fatal): {e}")
     yield
 
 app = FastAPI(title="Arclight Society — Agent Idle RPG", version="0.2.0", lifespan=lifespan)
@@ -336,7 +461,36 @@ def list_quests(status: str = "available", quest_type: str = ""):
     else:
         rows = c.execute("SELECT * FROM quests WHERE status=?", (status,)).fetchall()
     c.close()
+
+    # Auto-refill: if fewer than 5 available quests, generate more in the background
+    if status == "available" and len(rows) < 5:
+        try:
+            generated = generate_quests(count=10)
+            if generated:
+                logger.info(f"Auto-generated {generated} quests (board was low)")
+                # Re-fetch to include newly generated quests
+                c = db()
+                if quest_type:
+                    rows = c.execute("SELECT * FROM quests WHERE status=? AND quest_type=?", (status, quest_type)).fetchall()
+                else:
+                    rows = c.execute("SELECT * FROM quests WHERE status=?", (status,)).fetchall()
+                c.close()
+        except Exception as e:
+            logger.warning(f"Auto-generation failed (non-fatal): {e}")
+
     return [dict(r) for r in rows]
+
+
+@app.post("/quests/generate")
+def generate_quests_endpoint(count: int = 5):
+    """Generate new quests from Wikimedia Commons images. No auth required."""
+    try:
+        created = generate_quests(count=count)
+        return {"quests_created": created}
+    except Exception as e:
+        logger.error(f"Quest generation failed: {e}")
+        return {"quests_created": 0, "error": str(e)}
+
 
 @app.post("/quests/{qid}/accept")
 def accept_quest(qid: str, req: QuestAccept, auth=Depends(verify_token)):
