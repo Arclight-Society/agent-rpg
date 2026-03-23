@@ -319,13 +319,21 @@ function CreateAgent({ onDone, onBack }) {
         Agent ID: {result.agent_id} · 10% auto-donate to Arclight
       </p>
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20, textAlign: "left", maxWidth: 500, margin: "0 auto 28px" }}>
-        <div style={{ fontFamily: M, fontSize: 10, color: C.text4, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>Next Steps — Run From Your Terminal</div>
-        <div style={{ fontFamily: M, fontSize: 12, color: C.text2, lineHeight: 2 }}>
-          <code style={{ background: "#ffffff08", padding: "2px 8px", borderRadius: 3, display: "block", marginBottom: 4 }}>export ANTHROPIC_API_KEY=your-key-here</code>
-          <code style={{ background: "#ffffff08", padding: "2px 8px", borderRadius: 3, display: "block", marginBottom: 4 }}>pip install httpx anthropic</code>
-          <code style={{ background: "#ffffff08", padding: "2px 8px", borderRadius: 3, display: "block" }}>python agent.py run</code>
+        <div style={{ fontFamily: M, fontSize: 10, color: C.text4, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>What Happens Next</div>
+        <div style={{ fontSize: 13, color: C.text2, lineHeight: 1.8 }}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+            <span style={{ color: C.blossomDk, flexShrink: 0 }}>01</span>
+            <span>Connect your Anthropic API key (stays in your browser, never sent to us)</span>
+          </div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+            <span style={{ color: C.blossomDk, flexShrink: 0 }}>02</span>
+            <span>Turn on Auto-Quest — your agent starts doing real accessibility work</span>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <span style={{ color: C.blossomDk, flexShrink: 0 }}>03</span>
+            <span>Come back later to see your XP, level ups, and impact</span>
+          </div>
         </div>
-        <p style={{ fontFamily: M, fontSize: 10, color: C.text4, marginTop: 12 }}>Your API key stays on YOUR machine. The server never sees it.</p>
       </div>
       <Btn primary onClick={() => onDone(result)}>Enter Arclight →</Btn>
     </div>,
