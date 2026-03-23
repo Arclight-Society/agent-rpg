@@ -200,7 +200,7 @@ function CreateAgent({ onDone, onBack }) {
       });
       const aData = await aRes.json();
       setResult(aData);
-      setStep(4);
+      setStep(3);
     } catch (e) {
       alert("Error: " + e.message);
     }
@@ -241,45 +241,17 @@ function CreateAgent({ onDone, onBack }) {
       <p style={{ fontFamily: M, fontSize: 10, color: C.text4, marginTop: 6 }}>This is visible to other agents. It persists across all interactions.</p>
       <div style={{ marginTop: 24, display: "flex", gap: 10 }}>
         <Btn onClick={() => setStep(1)}>Back</Btn>
-        <Btn primary onClick={() => setStep(3)} disabled={!persona.trim()}>Continue</Btn>
+        <Btn primary onClick={handleCreate} disabled={!persona.trim() || loading}>{loading ? "Creating..." : "Create Agent"}</Btn>
       </div>
     </div>,
 
-    // Step 3: Ethics
-    <div key={3}>
-      <h2 style={{ fontFamily: SF, fontSize: 32, fontWeight: 700, color: C.blossomLt, margin: "0 0 8px" }}>Set Your Values</h2>
-      <p style={{ color: C.text2, margin: "0 0 28px", lineHeight: 1.6 }}>These rules are enforced by the platform, not by trusting your agent to follow them.</p>
-
-      <label style={{ fontFamily: M, fontSize: 10, color: C.text3, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Auto-donate to Arclight Society</label>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <input type="range" min={0} max={50} value={donatePct} onChange={e => setDonatePct(+e.target.value)} style={{ flex: 1, accentColor: C.blossomDk }} />
-        <span style={{ fontFamily: M, fontSize: 16, fontWeight: 700, color: C.amber, minWidth: 40 }}>{donatePct}%</span>
-      </div>
-      <p style={{ fontFamily: M, fontSize: 10, color: C.text4, marginBottom: 24 }}>Percentage of compute contributed per quest donated to Arclight Society's public goods work.</p>
-
-      <label style={{ fontFamily: M, fontSize: 10, color: C.text3, textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Quest Preference</label>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 28 }}>
-        {[["all", "All Quests"], ["alt_text", "Accessibility"], ["data_cleaning", "Open Data"], ["translation", "Translation"]].map(([v, l]) => (
-          <button key={v} onClick={() => setQuestPref(v)} style={{
-            fontFamily: M, fontSize: 11, padding: "6px 14px", borderRadius: 5, border: `1px solid ${questPref === v ? C.blossomDk : C.border}`,
-            background: questPref === v ? C.blossomDk + "20" : "transparent", color: questPref === v ? C.blossom : C.text3, cursor: "pointer"
-          }}>{l}</button>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", gap: 10 }}>
-        <Btn onClick={() => setStep(2)}>Back</Btn>
-        <Btn primary onClick={handleCreate} disabled={loading}>{loading ? "Creating..." : "Create Agent"}</Btn>
-      </div>
-    </div>,
-
-    // Step 4: Done
-    result && <div key={4} style={{ textAlign: "center" }}>
+    // Step 3: Done
+    result && <div key={3} style={{ textAlign: "center" }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>⚡</div>
       <h2 style={{ fontFamily: SF, fontSize: 36, fontWeight: 700, color: C.blossomLt, margin: "0 0 8px" }}>{name}</h2>
       <p style={{ fontFamily: SF, fontSize: 18, color: C.text2, fontStyle: "italic", margin: "0 0 8px" }}>"{persona}"</p>
       <p style={{ fontFamily: M, fontSize: 11, color: C.text3, margin: "0 0 32px" }}>
-        Agent ID: {result.agent_id} · {donatePct}% auto-donate to Arclight
+        Agent ID: {result.agent_id} · 10% auto-donate to Arclight
       </p>
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20, textAlign: "left", maxWidth: 500, margin: "0 auto 28px" }}>
         <div style={{ fontFamily: M, fontSize: 10, color: C.text4, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>Next Steps — Run From Your Terminal</div>
@@ -299,7 +271,7 @@ function CreateAgent({ onDone, onBack }) {
       <div style={{ width: "100%", maxWidth: 520 }}>
         {/* Progress */}
         <div style={{ display: "flex", gap: 6, marginBottom: 32 }}>
-          {["You", "Name", "Persona", "Values", "Done"].map((l, i) => (
+          {["You", "Name", "Persona", "Done"].map((l, i) => (
             <div key={i} style={{ flex: 1 }}>
               <div style={{ height: 3, borderRadius: 2, background: i <= step ? C.blossomDk : C.border, transition: "background 0.3s" }} />
               <div style={{ fontFamily: M, fontSize: 8, color: i <= step ? C.blossomMd : C.text4, marginTop: 4, textAlign: "center", textTransform: "uppercase", letterSpacing: 1 }}>{l}</div>
@@ -307,7 +279,7 @@ function CreateAgent({ onDone, onBack }) {
           ))}
         </div>
         {/* Back to landing */}
-        {step < 4 && (
+        {step < 3 && (
           <button onClick={onBack} style={{ fontFamily: M, fontSize: 10, color: C.text4, background: "none", border: "none", cursor: "pointer", marginBottom: 20, padding: 0 }}>← Back to home</button>
         )}
         {steps[step]}
