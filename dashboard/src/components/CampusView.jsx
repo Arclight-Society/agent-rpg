@@ -78,10 +78,15 @@ export default function CampusView({
         width: '100%',
         maxWidth: 800,
         aspectRatio: '16/9',
+        minHeight: 200,
         margin: '0 auto',
         borderRadius: 8,
         overflow: 'hidden',
         border: '1px solid #192A5B',
+        touchAction: 'none', // Prevent browser scroll interference on mobile
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
       }}
     />
   );

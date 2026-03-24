@@ -14,15 +14,27 @@ const config = {
   height: 450,
   pixelArt: true,
   roundPixels: true,
+  antialias: false,
   transparent: false,
   backgroundColor: '#0A0B24',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
+    expandParent: true,
   },
   scene: [BootScene, CampusScene],
   input: {
-    activePointers: 2, // Support pinch zoom on mobile
+    activePointers: 3, // Support pinch zoom + drag on mobile
+    touch: { capture: true },
+  },
+  render: {
+    pixelArt: true,
+    roundPixels: true,
+    antialias: false,
+  },
+  fps: {
+    target: 30, // Save battery on mobile
+    forceSetTimeOut: false,
   },
 };
 

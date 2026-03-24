@@ -154,21 +154,23 @@ export default class AgentSprite extends Phaser.GameObjects.Container {
     });
   }
 
-  celebrate(xp) {
+  celebrate(xp, rested = false) {
     this.state = CELEBRATING;
 
-    // Flash white
-    this.sprite.setTintFill(0xFFFFFF);
-    this.scene.time.delayedCall(100, () => {
+    // Flash white (brighter for rested)
+    this.sprite.setTintFill(rested ? 0xE8B84A : 0xFFFFFF);
+    this.scene.time.delayedCall(rested ? 200 : 100, () => {
       this.sprite.clearTint();
     });
 
     // XP floating text
-    const xpText = this.scene.add.text(this.x, this.y - 40, `+${xp} XP`, {
+    const xpLabel = rested ? `⚡ +${xp} XP (2x)` : `+${xp} XP`;
+    const xpColor = rested ? '#E8B84A' : '#DFD8EB';
+    const xpText = this.scene.add.text(this.x, this.y - 40, xpLabel, {
       fontFamily: 'IBM Plex Mono',
-      fontSize: '12px',
+      fontSize: rested ? '14px' : '12px',
       fontStyle: 'bold',
-      color: '#E8B84A',
+      color: xpColor,
       stroke: '#0A0B24',
       strokeThickness: 3,
     }).setOrigin(0.5, 1).setDepth(9999);
