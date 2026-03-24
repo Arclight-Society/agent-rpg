@@ -490,6 +490,78 @@ function Dashboard({ agent, token, onLogout }) {
   const [questLog, setQuestLog] = useState([]);
   const autoRef = useRef(null);
 
+  // ── Rested XP System ──
+  const RESTED_CAP = 50;
+  const RESTED_PER_HOUR = 1;
+  const RESTED_MULTIPLIER = 2;
+
+  const [restedCharges, setRestedCharges] = useState(() => {
+    const lastActive = parseFloat(localStorage.getItem("arclight_last_active") || "0");
+    if (!lastActive) return 0;
+    const hoursAway = (Date.now() - lastActive) / (1000 * 60 * 60);
+    return Math.min(RESTED_CAP, Math.floor(hoursAway * RESTED_PER_HOUR));
+  });
+
+  const [showWelcomeBack, setShowWelcomeBack] = useState(() => {
+    const lastActive = parseFloat(localStorage.getItem("arclight_last_active") || "0");
+    if (!lastActive) return false;
+    const hoursAway = (Date.now() - lastActive) / (1000 * 60 * 60);
+    return hoursAway >= 1;
+  });
+
+  const [hoursAway, setHoursAway] = useState(() => {
+    const lastActive = parseFloat(localStorage.getItem("arclight_last_active") || "0");
+    if (!lastActive) return 0;
+    return Math.floor((Date.now() - lastActive) / (1000 * 60 * 60));
+  });
+
+  // ── Streak System ──
+  const [streak, setStreak] = useState(() => {
+    return parseInt(localStorage.getItem("arclight_streak") || "0");
+  });
+  const [streakBroken, setStreakBroken] = useState(() => {
+    const lastDate = localStorage.getItem("arclight_streak_date");
+    if (!lastDate) return false;
+    const daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince > 1;
+  });
+  const [streakSavedToday, setStreakSavedToday] = useState(() => {
+    return localStorage.getItem("arclight_streak_date") === new Date().toDateString();
+  });
+
+  // Save last_active on every quest completion
+  const markActive = () => {
+    localStorage.setItem("arclight_last_active", Date.now().toString());
+  };
+
+  // Update streak on quest completion
+  const updateStreak = () => {
+    const today = new Date().toDateString();
+    if (streakSavedToday) return;
+    const lastDate = localStorage.getItem("arclight_streak_date");
+    const daysSince = lastDate ? Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)) : 999;
+    let newStreak;
+    if (daysSince <= 1) {
+      newStreak = streak + 1;
+    } else {
+      newStreak = 1;
+    }
+    setStreak(newStreak);
+    setStreakBroken(false);
+    setStreakSavedToday(true);
+    localStorage.setItem("arclight_streak", newStreak.toString());
+    localStorage.setItem("arclight_streak_date", today);
+  };
+
+  // Consume a rested charge, return the XP multiplier
+  const consumeRested = () => {
+    if (restedCharges > 0) {
+      setRestedCharges(prev => prev - 1);
+      return RESTED_MULTIPLIER;
+    }
+    return 1;
+  };
+
   const load = () => {
     const h = { Authorization: "Bearer " + token };
     fetch(API + "/leaderboard").then(r => r.json()).then(d => {
@@ -547,17 +619,26 @@ function Dashboard({ agent, token, onLogout }) {
           body: JSON.stringify({ agent_id: agent.agent_id, result: output.text, result_hash: output.hash, tokens_used: Math.floor(output.tokens_used * 0.3), model_used: output.model, similarity_score: 0.92 })
         });
 
+        // Rested XP multiplier
+        const xpMultiplier = consumeRested();
+        const finalXp = quest.xp_reward * xpMultiplier;
+        const wasRested = xpMultiplier > 1;
+
         // Update counts
         const newCount = dailyCount + 1;
         setDailyCount(newCount);
         localStorage.setItem("arclight_daily_count", newCount.toString());
         localStorage.setItem("arclight_daily_date", new Date().toDateString());
 
+        // Mark active + update streak
+        markActive();
+        updateStreak();
+
         // Tell Phaser: quest complete, celebrate
-        bridge.emit('quest_completed', { agentId: agent.agent_id, xp: quest.xp_reward });
+        bridge.emit('quest_completed', { agentId: agent.agent_id, xp: finalXp, rested: wasRested });
 
         // Add to quest log
-        setQuestLog(prev => [{ title: quest.title, xp: quest.xp_reward, time: Date.now(), text: output.text }, ...prev].slice(0, 20));
+        setQuestLog(prev => [{ title: quest.title, xp: finalXp, rested: wasRested, time: Date.now(), text: output.text }, ...prev].slice(0, 20));
 
         // Refresh data
         load();
@@ -589,6 +670,70 @@ function Dashboard({ agent, token, onLogout }) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: SN }}>
+
+      {/* ── Welcome Back Overlay ── */}
+      {showWelcomeBack && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+          background: "rgba(10,11,36,0.95)", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+            padding: "40px 48px", maxWidth: 420, width: "90%", textAlign: "center",
+          }}>
+            <div style={{ fontFamily: "Cormorant Garamond, Georgia, serif", fontSize: 28, fontWeight: 600, color: C.text, marginBottom: 8 }}>
+              Welcome back{profile ? `, ${profile.name}` : ""}
+            </div>
+            <div style={{ fontFamily: M, fontSize: 11, color: C.text4, marginBottom: 24 }}>
+              You were away for {hoursAway < 24 ? `${hoursAway} hour${hoursAway !== 1 ? "s" : ""}` : `${Math.floor(hoursAway / 24)} day${Math.floor(hoursAway / 24) !== 1 ? "s" : ""}`}.
+            </div>
+
+            {/* Rested bonus */}
+            {restedCharges > 0 && (
+              <div style={{
+                background: `${C.amber}15`, border: `1px solid ${C.amber}40`, borderRadius: 8,
+                padding: "16px 20px", marginBottom: 20,
+              }}>
+                <div style={{ fontFamily: M, fontSize: 22, fontWeight: 700, color: C.amber, marginBottom: 4 }}>
+                  ⚡ {restedCharges} rested quest{restedCharges !== 1 ? "s" : ""}
+                </div>
+                <div style={{ fontFamily: M, fontSize: 11, color: C.amber }}>
+                  {RESTED_MULTIPLIER}x XP on your next {restedCharges} quest{restedCharges !== 1 ? "s" : ""}
+                </div>
+              </div>
+            )}
+
+            {/* Streak */}
+            <div style={{ fontFamily: M, fontSize: 11, color: C.text4, marginBottom: 24 }}>
+              {streakBroken ? (
+                <span>Streak reset ({Math.floor(hoursAway / 24)} days away). New streak starts today.</span>
+              ) : streak > 0 ? (
+                <span style={{ color: C.torch }}>Streak: {streak} day{streak !== 1 ? "s" : ""} 🔥 — complete 1 quest today to keep it!</span>
+              ) : (
+                <span>Start a quest streak today!</span>
+              )}
+            </div>
+
+            {/* Honest idle message */}
+            <div style={{ fontFamily: M, fontSize: 9, color: C.text4, marginBottom: 20 }}>
+              Your agent quests while this tab is open.
+            </div>
+
+            <button
+              onClick={() => { setShowWelcomeBack(false); markActive(); }}
+              style={{
+                fontFamily: M, fontSize: 12, fontWeight: 600, padding: "10px 28px",
+                background: `linear-gradient(135deg, ${C.blossomDk}, ${C.amber})`,
+                color: "#fff", border: "none", borderRadius: 8, cursor: "pointer",
+                letterSpacing: 1,
+              }}
+            >
+              Resume Auto-Quest
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ padding: "12px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -667,6 +812,28 @@ function Dashboard({ agent, token, onLogout }) {
               </span>
             </div>
 
+            {/* Rested indicator */}
+            {restedCharges > 0 && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 4,
+                background: `${C.amber}20`, border: `1px solid ${C.amber}40`,
+                borderRadius: 6, padding: "3px 10px",
+                animation: "restedPulse 2s ease-in-out infinite",
+              }}>
+                <span style={{ fontSize: 11 }}>⚡</span>
+                <span style={{ fontFamily: M, fontSize: 9, fontWeight: 600, color: C.amber }}>
+                  {restedCharges} RESTED ({RESTED_MULTIPLIER}x)
+                </span>
+              </div>
+            )}
+
+            {/* Streak */}
+            {streak > 0 && !streakBroken && (
+              <div style={{ fontFamily: M, fontSize: 9, color: C.torch }}>
+                🔥 {streak}d
+              </div>
+            )}
+
             {/* Daily progress */}
             <div style={{ flex: 1, minWidth: 120 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -707,7 +874,7 @@ function Dashboard({ agent, token, onLogout }) {
                     background: isNew ? C.green + "08" : "transparent", borderRadius: 5, borderLeft: `2px solid ${isNew ? C.green : C.border}`,
                     transition: "all 0.5s", animation: isNew ? "fadeUp 0.4s ease" : "none"
                   }}>
-                    <span style={{ fontFamily: M, fontSize: 9, color: C.green, flexShrink: 0, marginTop: 1 }}>+{ql.xp} XP</span>
+                    <span style={{ fontFamily: M, fontSize: 9, color: ql.rested ? C.amber : C.green, flexShrink: 0, marginTop: 1 }}>{ql.rested ? "⚡ " : ""}+{ql.xp} XP{ql.rested ? " (2x)" : ""}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: M, fontSize: 10, color: isNew ? C.text : C.text3 }}>{ql.title}</div>
                       <div style={{ fontFamily: SF, fontSize: 10, color: C.text4, fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>"{ql.text?.slice(0, 80)}..."</div>
@@ -905,7 +1072,7 @@ function Dashboard({ agent, token, onLogout }) {
                   );
                 })}
                 {quests.length === 0 && <div style={{ fontFamily: M, fontSize: 11, color: C.text4, padding: 40, textAlign: "center" }}>All quests completed. More coming soon.</div>}
-                <style>{`@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}`}</style>
+                <style>{`@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}@keyframes restedPulse{0%,100%{box-shadow:0 0 4px rgba(212,168,67,0.3);}50%{box-shadow:0 0 12px rgba(212,168,67,0.6);}}`}</style>
 
                 {/* Auto-Quest Log */}
                 {questLog.length > 0 && (
