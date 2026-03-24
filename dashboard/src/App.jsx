@@ -784,15 +784,15 @@ function Dashboard({ agent, token, onLogout }) {
             <CampusView
               agents={agents}
               playerAgentId={agent?.agent_id}
+              profile={profile}
               nonprofits={nps}
               autoQuest={autoQuest}
+              restedCharges={restedCharges}
+              questLog={questLog}
               onBuildingClick={({ zone, questType, special }) => {
                 if (special === 'locked') return;
                 if (special === 'beacon') { setTab("leaderboard"); return; }
                 setTab("quests");
-              }}
-              onAgentClick={({ agentId }) => {
-                setTab("leaderboard");
               }}
             />
           </div>
